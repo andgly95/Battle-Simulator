@@ -154,6 +154,13 @@ impl<'a> BattleApp<'a> {
             // Run simulation ticks if not paused
             if !self.paused {
                 while self.last_sim_tick.elapsed() >= self.sim_rate {
+                    // Update simulation time
+                    let dt = self.sim_rate.as_secs_f32();
+                    let mut time = self.world.resource_mut::<SimulationTime>();
+                    time.tick(dt);
+                    drop(time);
+
+                    // Run all systems
                     self.schedule.run(&mut self.world);
                     self.last_sim_tick += self.sim_rate;
                 }
