@@ -33,36 +33,39 @@ pub fn calculate_morale_modifier(morale: &Morale) -> f32 {
     (morale.current / 100.0).sqrt()
 }
 
+/// Weapon reload system - updates reload timers
+pub fn weapon_reload_system(
+    mut query: Query<&mut Weapon>,
+    time: Res<crate::movement::SimulationTime>,
+) {
+    let dt = time.delta();
+    for mut weapon in query.iter_mut() {
+        weapon.update_reload(dt);
+    }
+}
+
 /// Ranged combat system
 pub fn ranged_combat_system(
-    mut commands: Commands,
     spatial: Res<SpatialIndex>,
-    mut shooter_query: Query<(
+    mut query: Query<(
         Entity,
         &Position,
         &mut Weapon,
         &Formation,
-        &Morale,
+        &mut Morale,
         &Fatigue,
         &Experience,
         &Team,
-    )>,
-    mut target_query: Query<(
-        Entity,
-        &Position,
-        &Formation,
         &mut Squad,
-        &mut Morale,
-        &Team,
-    ), Without<Weapon>>,
+    )>,
 ) {
     let mut rng = rand::thread_rng();
 
-    for (shooter_entity, shooter_pos, mut weapon, shooter_formation, shooter_morale,
-         shooter_fatigue, shooter_exp, shooter_team) in shooter_query.iter_mut() {
+    // Collect all potential shots to avoid borrow checker issues
+    let mut shots = Vec::new();
 
-        // Update reload timer
-        weapon.update_reload(1.0/30.0); // Assuming 30 ticks per second
+    for (shooter_entity, shooter_pos, weapon, shooter_formation, shooter_morale,
+         shooter_fatigue, shooter_exp, shooter_team, _squad) in query.iter() {
 
         // Check if can fire
         if !weapon.can_fire() {
@@ -77,7 +80,12 @@ pub fn ranged_combat_system(
         let mut best_score = 0.0;
 
         for entity in nearby {
-            if let Ok((target_entity, target_pos, _, _, _, target_team)) = target_query.get(entity) {
+            // Skip self
+            if entity == shooter_entity {
+                continue;
+            }
+
+            if let Ok((_, target_pos, _, _, _, _, _, target_team, _)) = query.get(entity) {
                 // Check if enemy
                 if !shooter_team.is_enemy(target_team) {
                     continue;
@@ -89,65 +97,73 @@ pub fn ranged_combat_system(
                     let score = 1.0 - (distance / weapon.range);
                     if score > best_score {
                         best_score = score;
-                        best_target = Some((target_entity, distance));
+                        best_target = Some((entity, distance));
                     }
                 }
             }
         }
 
-        // Fire at best target
+        // Record shot if we have a target
         if let Some((target_entity, distance)) = best_target {
-            if let Ok((_, target_pos, target_formation, mut target_squad, mut target_morale, _)) =
-                target_query.get_mut(target_entity) {
+            // Calculate hit probability
+            let base_accuracy = weapon.accuracy * shooter_exp.combat_modifier();
+            let distance_mod = calculate_distance_modifier(distance, weapon.effective_range);
+            let morale_mod = calculate_morale_modifier(shooter_morale);
+            let fatigue_mod = shooter_fatigue.modifier();
+            let firepower_mod = shooter_formation.firepower_modifier();
 
-                // Calculate hit probability
-                let base_accuracy = weapon.accuracy * shooter_exp.combat_modifier();
-                let distance_mod = calculate_distance_modifier(distance, weapon.effective_range);
-                let formation_mod = target_formation.target_profile_modifier();
-                let morale_mod = calculate_morale_modifier(shooter_morale);
-                let fatigue_mod = shooter_fatigue.modifier();
-                let firepower_mod = shooter_formation.firepower_modifier();
+            shots.push((
+                shooter_entity,
+                target_entity,
+                distance,
+                base_accuracy * distance_mod * morale_mod * fatigue_mod * firepower_mod,
+            ));
+        }
+    }
 
-                let hit_chance = base_accuracy
-                    * distance_mod
-                    * formation_mod
-                    * morale_mod
-                    * fatigue_mod
-                    * firepower_mod;
+    // Now apply all the shots
+    for (shooter_entity, target_entity, distance, hit_chance) in shots {
+        // Get mutable access to both entities
+        if let Ok([
+            (_, _, mut shooter_weapon, _, _, _, _, _, _),
+            (_, _, _, target_formation, mut target_morale, _, _, _, mut target_squad),
+        ]) = query.get_many_mut([shooter_entity, target_entity]) {
 
-                // Volley fire using Poisson distribution
-                let shots_fired = target_squad.size as f32 * 0.5; // Assume half can fire
-                let expected_hits = shots_fired * hit_chance;
+            let formation_mod = target_formation.target_profile_modifier();
+            let final_hit_chance = hit_chance * formation_mod;
 
-                let hits = if expected_hits > 0.0 {
-                    // Use Poisson distribution for realistic variance
-                    let poisson = Poisson::new(expected_hits).unwrap();
-                    poisson.sample(&mut rng) as u32
-                } else {
-                    0
-                };
+            // Volley fire using Poisson distribution
+            let shots_fired = target_squad.size as f32 * 0.5; // Assume half can fire
+            let expected_hits = shots_fired * final_hit_chance;
 
-                if hits > 0 {
-                    // Apply casualties
-                    let casualties = (hits as f32 * 0.35) as u32; // 35% lethality
-                    target_squad.apply_casualties(casualties);
+            let hits = if expected_hits > 0.0 {
+                // Use Poisson distribution for realistic variance
+                let poisson = Poisson::new(expected_hits).unwrap();
+                poisson.sample(&mut rng) as u32
+            } else {
+                0
+            };
 
-                    // Morale impact
-                    let casualty_rate = casualties as f32 / target_squad.max_size as f32;
-                    target_morale.modify(-casualty_rate * 30.0);
+            if hits > 0 {
+                // Apply casualties
+                let casualties = (hits as f32 * 0.35) as u32; // 35% lethality
+                target_squad.apply_casualties(casualties);
 
-                    tracing::debug!(
-                        "Ranged combat: {} shots, {} hits, {} casualties at {}m",
-                        shots_fired,
-                        hits,
-                        casualties,
-                        distance
-                    );
-                }
+                // Morale impact
+                let casualty_rate = casualties as f32 / target_squad.max_size as f32;
+                target_morale.modify(-casualty_rate * 30.0);
 
-                // Fire the weapon
-                weapon.fire();
+                tracing::debug!(
+                    "Ranged combat: {} shots, {} hits, {} casualties at {}m",
+                    shots_fired,
+                    hits,
+                    casualties,
+                    distance
+                );
             }
+
+            // Fire the weapon
+            shooter_weapon.fire();
         }
     }
 }
