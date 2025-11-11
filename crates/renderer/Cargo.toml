@@ -1,0 +1,22 @@
+[package]
+name = "battle-sim-renderer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+battle-sim-core = { path = "../core" }
+battle-sim-simulation = { path = "../simulation" }
+glam = { workspace = true }
+wgpu = { workspace = true }
+winit = { workspace = true }
+egui = { workspace = true }
+egui-wgpu = { workspace = true }
+pollster = "0.3"
+bytemuck = { version = "1.14", features = ["derive"] }
+
+[features]
+default = ["graphics"]
+graphics = []
+headless = []

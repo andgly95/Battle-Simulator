@@ -1,0 +1,19 @@
+[package]
+name = "battle-sim-simulation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+battle-sim-core = { path = "../core" }
+glam = { workspace = true }
+serde = { workspace = true }
+bevy_ecs = { workspace = true }
+rayon = { workspace = true }
+rand = { workspace = true }
+rand_distr = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }

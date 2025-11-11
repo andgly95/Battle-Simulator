@@ -1,0 +1,182 @@
+# French Line Infantry - Standard infantry of the Grande Armée
+# Period: 1803-1815
+
+[unit]
+id = "fra_line_infantry_1805"
+name = "French Line Infantry"
+era = "napoleonic"
+nation = "france"
+type = "infantry"
+category = "line_infantry"
+period_start = 1803
+period_end = 1815
+
+[unit.description]
+short = "The backbone of Napoleon's Grande Armée"
+long = """
+French line infantry represented the core fighting force of Napoleon's armies.
+Organized into regiments of ~3000 men, divided into battalions of 6-9 companies.
+Known for their aggressive tactics, column formations, and devastating firepower.
+"""
+
+[unit.organization]
+# Standard battalion size
+nominal_size = 800
+min_size = 400
+max_size = 1000
+
+# Company structure
+companies = 6
+men_per_company = 133
+
+# Officers and NCOs
+officers = 30
+ncos = 80
+
+[unit.combat_stats]
+# Base statistics (0-100 scale)
+base_morale = 75
+base_discipline = 70
+base_experience = 60
+
+# Combat skills
+melee_skill = 70
+ranged_skill = 65
+defense_skill = 60
+
+# Physical attributes
+stamina = 75
+speed_multiplier = 1.0
+
+[unit.qualities]
+# Quality variants
+quality_levels = ["conscript", "line", "veteran", "elite"]
+
+[unit.qualities.conscript]
+morale_modifier = 0.7
+experience_modifier = 0.5
+cost_modifier = 0.6
+
+[unit.qualities.line]
+morale_modifier = 1.0
+experience_modifier = 1.0
+cost_modifier = 1.0
+
+[unit.qualities.veteran]
+morale_modifier = 1.2
+experience_modifier = 1.5
+cost_modifier = 1.5
+
+[unit.qualities.elite]
+morale_modifier = 1.4
+experience_modifier = 2.0
+cost_modifier = 2.0
+
+[unit.movement]
+# Movement speeds in m/s
+walk_speed = 1.2
+quick_march_speed = 1.8
+run_speed = 2.5
+charge_speed = 3.0
+
+# Fatigue rates (per second of movement)
+walk_fatigue_rate = 0.01
+quick_march_fatigue_rate = 0.02
+run_fatigue_rate = 0.05
+charge_fatigue_rate = 0.08
+
+# Recovery
+rest_recovery_rate = 0.03
+
+[unit.formations]
+# Available formations
+available = ["line", "column", "square", "skirmish"]
+default = "column"
+preferred_combat = "line"
+
+[unit.formations.line]
+name = "Two-rank line"
+ranks = 2
+frontage_per_man = 0.6  # meters
+depth_multiplier = 1.0
+speed_modifier = 0.9
+firepower_modifier = 1.2
+melee_defense = 0.9
+target_profile = 1.2
+change_time = 60  # seconds to form
+
+[unit.formations.column]
+name = "Attack column"
+ranks = 12
+frontage_per_man = 0.5
+depth_multiplier = 6.0
+speed_modifier = 1.1
+firepower_modifier = 0.4
+melee_attack = 1.3
+melee_defense = 0.8
+target_profile = 1.5
+change_time = 45
+
+[unit.formations.square]
+name = "Infantry square"
+hollow = true
+ranks = 4
+speed_modifier = 0.3
+firepower_modifier = 0.7
+melee_defense_vs_cavalry = 3.0
+melee_defense_vs_infantry = 0.7
+target_profile = 0.9
+change_time = 90
+
+[unit.formations.skirmish]
+name = "Skirmisher screen"
+spacing = 5.0  # meters between men
+speed_modifier = 1.2
+firepower_modifier = 0.6
+target_profile = 0.4
+melee_defense = 0.5
+change_time = 120
+
+[unit.weapons]
+primary = "charleville_musket_1777"
+secondary = "bayonet_17inch"
+
+[unit.ammunition]
+rounds_per_man = 60
+resupply_time = 300  # seconds
+
+[unit.special_abilities]
+# French-specific abilities
+"l_attaque_a_la_bayonnette" = true  # Bayonet charge bonus
+"feu_de_bataillon" = true           # Battalion fire volley
+
+[unit.morale_modifiers]
+# French esprit de corps
+national_pride = 1.1
+revolutionary_fervor = 1.15  # Pre-1804
+imperial_glory = 1.1         # Post-1804
+
+# Commander effects
+emperor_present = 1.5        # "The Emperor is watching!"
+marshal_present = 1.2
+
+[unit.historical_notes]
+battles = [
+    "Austerlitz (1805)",
+    "Jena-Auerstedt (1806)",
+    "Wagram (1809)",
+    "Borodino (1812)",
+    "Leipzig (1813)",
+    "Waterloo (1815)"
+]
+
+typical_deployment = """
+Line infantry typically deployed in columns for movement and maneuver,
+then deployed into two-rank lines for firefights. The French preference
+was for aggressive column attacks supported by skirmishers and artillery.
+"""
+
+[unit.cost]
+recruitment = 500
+upkeep_per_month = 50
+replacement_cost_per_man = 0.5

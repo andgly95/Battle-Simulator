@@ -1,0 +1,56 @@
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+Cargo.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Profiling
+*.profraw
+*.profdata
+perf.data*
+flamegraph.svg
+
+# Logs
+*.log
+logs/
+
+# Benchmarking
+criterion/
+
+# Testing
+coverage/
+
+# Documentation build
+/docs/_build/
+/docs/book/
+
+# Local configuration
+.env
+config.local.toml
+
+# Python (for analysis scripts)
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Data
+# Uncomment if you don't want to track large scenario files
+# /data/scenarios/*.bin
+# /data/maps/*.bin

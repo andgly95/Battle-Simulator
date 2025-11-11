@@ -1,0 +1,20 @@
+[package]
+name = "battle-sim-napoleonic"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+battle-sim-core = { path = "../core" }
+battle-sim-simulation = { path = "../simulation" }
+glam = { workspace = true }
+serde = { workspace = true }
+toml = { workspace = true }
+bevy_ecs = { workspace = true }
+rand = { workspace = true }
+rand_distr = { workspace = true }
+anyhow = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }

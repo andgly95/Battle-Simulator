@@ -1,0 +1,158 @@
+# Charleville Musket Model 1777
+# The standard French infantry musket of the Napoleonic era
+
+[weapon]
+id = "charleville_musket_1777"
+name = "Charleville Musket Model 1777"
+era = "napoleonic"
+type = "smoothbore_musket"
+nation = "france"
+period_start = 1777
+period_end = 1840
+
+[weapon.description]
+short = "Standard French infantry musket"
+long = """
+The Charleville Model 1777 was the primary infantry weapon of Napoleon's Grande Armée.
+A .69 caliber smoothbore muzzle-loader, it was reliable, sturdy, and effective at
+close to medium range. The Charleville was also used by the Americans in their
+Revolutionary War and influenced the design of many other European muskets.
+"""
+
+[weapon.specifications]
+# Physical characteristics
+caliber = 17.5           # mm (.69 inch)
+barrel_length = 1.138    # meters (44.8 inches)
+total_length = 1.52      # meters (60 inches)
+weight = 4.4             # kg (9.7 lbs)
+
+# Ammunition
+ball_weight = 27.5       # grams
+powder_charge = 11.0     # grams
+
+[weapon.performance]
+# Ballistics
+muzzle_velocity = 400    # m/s
+effective_range = 50     # meters (realistic battlefield accuracy)
+maximum_range = 200      # meters (absolute maximum)
+optimal_range = 25       # meters (best accuracy)
+
+# Rate of fire
+rate_of_fire = 3.0       # rounds per minute (trained troops)
+rate_of_fire_experienced = 4.0  # rounds per minute (veteran troops)
+rate_of_fire_raw = 2.0   # rounds per minute (recruits)
+
+reload_time = 20.0       # seconds (average)
+reload_time_fast = 15.0  # seconds (experienced)
+reload_time_slow = 30.0  # seconds (under fire/fatigued)
+
+[weapon.accuracy]
+# Base accuracy at effective range (50m)
+base_accuracy = 0.40     # 40% hit rate for aimed fire
+
+# Accuracy curve - multipliers at different ranges
+[weapon.accuracy.range_modifiers]
+"10" = 1.5    # 10m: 60% accuracy
+"25" = 1.2    # 25m: 48% accuracy (optimal)
+"50" = 1.0    # 50m: 40% accuracy (effective range)
+"75" = 0.6    # 75m: 24% accuracy
+"100" = 0.25  # 100m: 10% accuracy
+"150" = 0.10  # 150m: 4% accuracy
+"200" = 0.03  # 200m: 1.2% accuracy
+
+[weapon.damage]
+# Lethality
+penetration = 0.20       # Low penetration (no armor piercing)
+lethality = 0.35         # 35% of hits are instantly fatal
+wound_severity = 0.65    # 65% cause wounds
+
+# Large caliber ball causes significant trauma
+stopping_power = 0.9     # High likelihood of incapacitation
+
+[weapon.reliability]
+misfire_rate = 0.05      # 5% chance per shot
+misfire_rate_wet = 0.25  # 25% in rain/wet conditions
+fouling_rate = 0.02      # Accuracy degrades 2% per shot
+cleaning_time = 300      # 5 minutes to clean
+
+[weapon.tactical]
+# Weapon characteristics affecting combat
+volley_fire = true       # Designed for volley fire
+aimed_fire = false       # Not practical for aimed individual fire
+effective_volley_range = 75  # Volley fire effective to 75m
+
+# Environmental effects
+wind_sensitivity = 0.3   # Moderate wind drift
+rain_effectiveness = 0.5 # 50% effectiveness in rain
+
+[weapon.bayonet]
+# Bayonet attachment (17-inch socket bayonet)
+has_bayonet = true
+bayonet_length = 0.43    # meters (17 inches)
+bayonet_melee_bonus = 1.2
+bayonet_reach_bonus = 0.5
+
+[weapon.maintenance]
+# Logistics
+shots_before_cleaning = 50
+cleaning_time_seconds = 300
+replacement_cost = 25
+repair_cost = 5
+
+[weapon.historical]
+manufacturers = [
+    "Charleville Arsenal",
+    "Maubeuge Arsenal",
+    "St. Étienne Arsenal"
+]
+
+production_total = 7000000  # Approximate total production
+service_life = "1777-1840"
+
+notable_battles = [
+    "American Revolution (1775-1783)",
+    "French Revolutionary Wars (1792-1802)",
+    "Napoleonic Wars (1803-1815)"
+]
+
+influence = """
+The Charleville Model 1777 was one of the most influential military firearms
+of the 18th century. It served as the basis for the American Springfield Model 1795
+and influenced musket design across Europe. Its reliability and effectiveness
+made it the standard against which other muskets were judged.
+"""
+
+[weapon.comparison]
+# Compared to other muskets
+vs_brown_bess = "Similar performance, slightly lighter"
+vs_prussian_1782 = "Comparable accuracy, better reliability"
+vs_austrian_1784 = "Superior in wet conditions"
+
+[weapon.ammunition_types]
+# Different loads for different situations
+
+[weapon.ammunition_types.standard]
+name = "Standard ball"
+ball_weight = 27.5
+powder_charge = 11.0
+accuracy_modifier = 1.0
+damage_modifier = 1.0
+
+[weapon.ammunition_types.buck_and_ball]
+name = "Buck and ball"
+description = "One musket ball plus 3 buckshot"
+ball_weight = 27.5
+buckshot_count = 3
+effective_range = 30
+accuracy_modifier = 0.8
+damage_modifier = 1.3
+spread = 2.0  # meters at 50m
+
+[weapon.ammunition_types.reduced_charge]
+name = "Reduced charge"
+description = "Less powder for training or when low on ammunition"
+ball_weight = 27.5
+powder_charge = 7.0
+accuracy_modifier = 0.9
+damage_modifier = 0.7
+range_modifier = 0.7
