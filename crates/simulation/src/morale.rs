@@ -123,8 +123,9 @@ pub fn morale_check_system(
         }
 
         // Slow morale recovery when out of combat
+        // Only recover when truly out of combat (at 30 ticks/sec, 0.001 = 0.03 morale/sec)
         if ai_state.state == BehaviorState::Idle && morale.current < morale.base {
-            morale.modify(0.1); // Slow recovery
+            morale.modify(0.001); // Very slow recovery - takes ~30 seconds to recover 1 point
         }
 
         // Check for unit destruction

@@ -149,9 +149,10 @@ pub fn ranged_combat_system(
                 let casualties = (hits as f32 * 0.35) as u32; // 35% lethality
                 target_squad.apply_casualties(casualties);
 
-                // Morale impact
+                // Morale impact - heavily scaled to cause routing at ~30% casualties
+                // At 30% casualties: -45 morale (70 → 25, near routing threshold of 20)
                 let casualty_rate = casualties as f32 / target_squad.max_size as f32;
-                target_morale.modify(-casualty_rate * 30.0);
+                target_morale.modify(-casualty_rate * 150.0);
 
                 tracing::debug!(
                     "Ranged combat: {} shots, {} hits, {} casualties at {}m",
