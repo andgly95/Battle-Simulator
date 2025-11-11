@@ -505,7 +505,357 @@ area_of_effect = 15
 effective_range = 300
 ```
 
-### 8. Project Structure
+### 8. Rendering Architecture
+
+The rendering system is designed with a clean abstraction layer to support multiple backends, scaling from simple 2D pixel visualization to full 3D animated scenes with minimal changes to the simulation core.
+
+#### 8.1 Design Principles
+
+**Separation of Concerns:**
+- Simulation runs independently of rendering
+- Renderer reads from ECS components without modifying them
+- Frame rate can differ from simulation tick rate
+- Renderer can be swapped without changing simulation logic
+
+**Performance First:**
+- Instanced rendering for massive unit counts (one draw call per unit type)
+- Spatial culling - only render visible units
+- Level of Detail (LOD) system:
+  - Far: Single pixel per unit
+  - Medium: Sprite/simple geometry
+  - Close: Detailed models with animations
+- Render on separate thread from simulation
+
+**Scalability Path:**
+```
+Phase 1: 2D Pixels    →  Phase 2: 2D Sprites  →  Phase 3: 3D Models
+(pixels crate)           (wgpu + batching)        (wgpu + instancing)
+```
+
+#### 8.2 Rendering Abstraction Layer
+
+**Core Trait:**
+```rust
+/// Abstract renderer that can be implemented by different backends
+pub trait Renderer {
+    /// Initialize the rendering backend
+    fn initialize(&mut self, width: u32, height: u32) -> Result<()>;
+
+    /// Begin a new frame
+    fn begin_frame(&mut self);
+
+    /// Render all units from the simulation
+    fn render_units(&mut self, units: &Query<(&Position, &Team, &Squad, &AIState)>);
+
+    /// Render terrain/map
+    fn render_terrain(&mut self, terrain: &TerrainData);
+
+    /// Render UI overlay (stats, minimap)
+    fn render_ui(&mut self, stats: &BattleStatistics);
+
+    /// Complete frame and present to screen
+    fn end_frame(&mut self) -> Result<()>;
+
+    /// Handle window resize
+    fn resize(&mut self, width: u32, height: u32);
+
+    /// Get camera controller
+    fn camera_mut(&mut self) -> &mut Camera;
+}
+
+/// Camera system for view control
+pub struct Camera {
+    pub position: Vec2,      // World position camera is looking at
+    pub zoom: f32,           // Zoom level (1.0 = 1 pixel = 1 meter)
+    pub rotation: f32,       // Camera rotation in radians
+    pub viewport: (u32, u32), // Screen size in pixels
+}
+
+impl Camera {
+    /// Convert world coordinates to screen coordinates
+    pub fn world_to_screen(&self, world_pos: Vec2) -> Vec2;
+
+    /// Convert screen coordinates to world coordinates
+    pub fn screen_to_world(&self, screen_pos: Vec2) -> Vec2;
+
+    /// Pan camera by screen delta
+    pub fn pan(&mut self, delta: Vec2);
+
+    /// Zoom in/out (mouse wheel)
+    pub fn zoom_at(&mut self, screen_pos: Vec2, zoom_delta: f32);
+
+    /// Get visible world bounds for culling
+    pub fn visible_bounds(&self) -> Rect;
+}
+```
+
+#### 8.3 Backend Implementations
+
+**Phase 1: Pixel Renderer (Current)**
+```rust
+/// Simple 2D pixel-based renderer using the `pixels` crate
+pub struct PixelRenderer {
+    pixels: Pixels,           // Pixel buffer
+    camera: Camera,
+    width: u32,
+    height: u32,
+}
+
+impl Renderer for PixelRenderer {
+    fn render_units(&mut self, units: &Query<...>) {
+        let frame = self.pixels.get_frame_mut();
+
+        // Clear to background
+        frame.fill(0);
+
+        // Get visible bounds for culling
+        let visible = self.camera.visible_bounds();
+
+        for (pos, team, squad, ai_state) in units.iter() {
+            // Skip units outside camera view
+            if !visible.contains(pos.x, pos.y) {
+                continue;
+            }
+
+            // Convert world position to screen
+            let screen_pos = self.camera.world_to_screen(Vec2::new(pos.x, pos.y));
+
+            // Determine color based on team and state
+            let color = match (team.side, ai_state.state) {
+                (Side::Allied, BehaviorState::Routing) => BLUE_ROUTING,
+                (Side::Allied, _) => BLUE_ACTIVE,
+                (Side::Enemy, BehaviorState::Routing) => RED_ROUTING,
+                (Side::Enemy, _) => RED_ACTIVE,
+            };
+
+            // Draw unit (simple rectangle for now)
+            self.draw_rect(frame, screen_pos, 4, 4, color);
+        }
+    }
+}
+```
+
+**Phase 2: Sprite Renderer (Future)**
+```rust
+/// 2D sprite-based renderer using wgpu
+pub struct SpriteRenderer {
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    sprite_batch: SpriteBatch,  // Batches sprites for instanced rendering
+    camera: Camera,
+    textures: HashMap<String, Texture>,
+}
+
+impl Renderer for SpriteRenderer {
+    fn render_units(&mut self, units: &Query<...>) {
+        self.sprite_batch.clear();
+
+        for (pos, team, formation, facing) in units.iter() {
+            // Choose sprite based on unit type and formation
+            let sprite_id = match formation.formation_type {
+                FormationType::Line => "infantry_line",
+                FormationType::Column => "infantry_column",
+                // ...
+            };
+
+            // Add to batch (all units drawn in one call per sprite type)
+            self.sprite_batch.add(
+                sprite_id,
+                pos.x, pos.y,
+                facing.angle,
+                team_color(team),
+            );
+        }
+
+        // Submit batched draw calls
+        self.sprite_batch.draw(&self.device, &self.queue);
+    }
+}
+```
+
+**Phase 3: 3D Renderer (Future)**
+```rust
+/// Full 3D renderer with animated models
+pub struct Renderer3D {
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    models: HashMap<String, Model3D>,
+    instance_buffer: InstanceBuffer,  // GPU buffer for instanced rendering
+    camera: Camera3D,  // Perspective camera
+}
+
+impl Renderer for Renderer3D {
+    fn render_units(&mut self, units: &Query<...>) {
+        // Collect all instances per model type
+        let mut instances_by_model: HashMap<&str, Vec<Instance>> = HashMap::new();
+
+        for (pos, unit_id, facing, animation_state) in units.iter() {
+            let model_id = &unit_id.unit_type;
+
+            instances_by_model
+                .entry(model_id)
+                .or_default()
+                .push(Instance {
+                    position: [pos.x, pos.y, pos.z],
+                    rotation: facing.angle,
+                    animation_frame: animation_state.frame,
+                });
+        }
+
+        // Draw all instances of each model type in one call
+        for (model_id, instances) in instances_by_model {
+            self.instance_buffer.update(&instances);
+            self.models[model_id].draw_instanced(&self.device, instances.len());
+        }
+    }
+}
+```
+
+#### 8.4 Performance Optimizations
+
+**Instanced Rendering:**
+- Single draw call for all units of the same type
+- GPU-side transformations
+- Target: 10,000+ units at 60 FPS
+
+**Spatial Culling:**
+```rust
+// Only render units in camera view
+let visible_bounds = camera.visible_bounds();
+let visible_entities = spatial_index.query_rect(visible_bounds);
+
+// Render only visible entities
+for entity in visible_entities {
+    // ...
+}
+```
+
+**Level of Detail (LOD):**
+```rust
+fn determine_lod(distance_to_camera: f32) -> LOD {
+    match distance_to_camera {
+        0.0..=100.0 => LOD::High,      // Full detail, animations
+        100.0..=500.0 => LOD::Medium,  // Simple sprites
+        500.0..=2000.0 => LOD::Low,    // Single pixel/dot
+        _ => LOD::None,                // Don't render (culled)
+    }
+}
+```
+
+**Double Buffering:**
+- Simulation writes to one buffer
+- Renderer reads from previous buffer
+- No locks during frame rendering
+
+**Dirty Tracking:**
+```rust
+// Only update static terrain once
+if terrain.is_dirty() {
+    renderer.update_terrain(terrain);
+    terrain.mark_clean();
+}
+```
+
+#### 8.5 Integration Pattern
+
+**Main Loop:**
+```rust
+fn main() {
+    let mut world = World::new();
+    let mut renderer = PixelRenderer::new(1920, 1080);
+    let mut schedule = create_simulation_schedule();
+
+    let mut last_sim_tick = Instant::now();
+    let sim_rate = Duration::from_millis(33);  // 30 Hz simulation
+
+    event_loop.run(move |event, _, control_flow| {
+        match event {
+            Event::RedrawRequested(_) => {
+                // Run simulation ticks if needed
+                while last_sim_tick.elapsed() >= sim_rate {
+                    schedule.run(&mut world);
+                    last_sim_tick += sim_rate;
+                }
+
+                // Render current state
+                renderer.begin_frame();
+
+                let mut unit_query = world.query::<(&Position, &Team, &Squad, &AIState)>();
+                renderer.render_units(&unit_query);
+
+                let stats = world.resource::<BattleStatistics>();
+                renderer.render_ui(stats);
+
+                renderer.end_frame().unwrap();
+            }
+
+            Event::WindowEvent { event: WindowEvent::Resized(size), .. } => {
+                renderer.resize(size.width, size.height);
+            }
+
+            // Handle input...
+        }
+    });
+}
+```
+
+#### 8.6 Rendering Features
+
+**Phase 1 (2D Pixels):**
+- ✅ Colored rectangles for units (team colors)
+- ✅ Camera pan/zoom
+- ✅ Unit state visualization (routing = darker color)
+- ✅ Simple terrain (grid lines)
+- ✅ Basic UI overlay (stats, FPS counter)
+
+**Phase 2 (2D Sprites):**
+- □ Sprite-based unit rendering
+- □ Formation visualization (units arranged in proper formations)
+- □ Directional sprites (facing direction)
+- □ Simple animations (march, fire, melee)
+- □ Terrain textures
+- □ Minimap
+- □ Projectile trails
+
+**Phase 3 (3D Models):**
+- □ Full 3D animated models
+- □ Detailed terrain with elevation
+- □ Particle effects (smoke, explosions)
+- □ Dynamic lighting
+- □ Weather effects
+- □ Cinematic camera
+- □ Unit damage visualization
+
+#### 8.7 Dependencies
+
+**Phase 1:**
+```toml
+[dependencies]
+pixels = "0.13"           # 2D pixel buffer rendering
+winit = "0.29"            # Window creation and event handling
+glam = "0.24"             # Math library for camera
+```
+
+**Phase 2:**
+```toml
+[dependencies]
+wgpu = "0.18"             # Modern GPU API (WebGPU)
+wgpu-types = "0.18"
+winit = "0.29"
+glam = "0.24"
+image = "0.24"            # Image loading for textures
+```
+
+**Phase 3:**
+```toml
+[dependencies]
+wgpu = "0.18"
+glam = "0.24"
+gltf = "1.4"              # 3D model loading
+cgmath = "0.18"           # Additional math for 3D
+```
+
+### 9. Project Structure
 
 ```
 battle-simulator/

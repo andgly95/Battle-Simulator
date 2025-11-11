@@ -6,17 +6,22 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
+# Workspace crates
 battle-sim-core = { path = "../core" }
 battle-sim-simulation = { path = "../simulation" }
-glam = { workspace = true }
-wgpu = { workspace = true }
-winit = { workspace = true }
-egui = { workspace = true }
-egui-wgpu = { workspace = true }
-pollster = "0.3"
-bytemuck = { version = "1.14", features = ["derive"] }
 
-[features]
-default = ["graphics"]
-graphics = []
-headless = []
+# Workspace dependencies
+glam = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+# Rendering
+pixels = { workspace = true }
+winit = { workspace = true }
+
+# ECS
+bevy_ecs = { workspace = true }
+
+[dev-dependencies]
+tracing-subscriber = { workspace = true }

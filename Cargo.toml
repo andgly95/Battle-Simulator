@@ -33,8 +33,9 @@ bevy_ecs = "0.14"
 # specs = "0.20"        # Alternative ECS
 
 # Rendering (optional)
+pixels = "0.15"         # 2D pixel buffer rendering (compatible with winit 0.30+)
 wgpu = "0.19"
-winit = "0.29"
+winit = "0.30"
 egui = "0.27"
 egui-wgpu = "0.27"
 
