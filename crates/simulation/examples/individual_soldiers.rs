@@ -33,6 +33,7 @@ struct Soldier {
     file: u32,  // Column in formation
     target_pos: Vec2,
     in_front_rank: bool,
+    facing: Vec2,  // Direction soldier is facing
 }
 
 /// Individual soldier weapon
@@ -81,6 +82,26 @@ struct Battalion {
     formation_center: Vec2,
 }
 
+/// Muzzle flash effect (short-lived bright flash)
+#[derive(Component)]
+struct MuzzleFlash {
+    lifetime: f32,  // Seconds remaining
+}
+
+/// Smoke particle (lingers and fades)
+#[derive(Component)]
+struct SmokeParticle {
+    lifetime: f32,  // Seconds remaining
+    max_lifetime: f32,
+    velocity: Vec2,
+}
+
+/// Dead body (remains on battlefield)
+#[derive(Component)]
+struct DeadBody {
+    time_since_death: f32,
+}
+
 struct BattleApp<'a> {
     window: Option<winit::window::Window>,
     renderer: Option<PixelRenderer<'a>>,
@@ -110,6 +131,9 @@ impl<'a> BattleApp<'a> {
             soldier_shooting_system,
             projectile_movement_system,
             projectile_hit_detection_system,
+            update_muzzle_flashes,
+            update_smoke_particles,
+            update_dead_bodies,
         ).chain());
         
         tracing::info!("==============================================");
@@ -164,34 +188,106 @@ impl<'a> BattleApp<'a> {
             
             renderer.begin_frame();
             renderer.draw_grid(100.0);
-            
-            // Draw individual soldiers
-            let visible = renderer.visible_bounds();
-            let mut soldier_query = self.world.query::<(&Position, &Team)>();
 
-            for (pos, team) in soldier_query.iter(&self.world) {
+            let visible = renderer.visible_bounds();
+
+            // 1. Draw dead bodies (on ground)
+            let mut dead_query = self.world.query::<(&Position, &Team, &DeadBody)>();
+            for (pos, team, dead) in dead_query.iter(&self.world) {
                 if !visible.contains(pos.x, pos.y) {
                     continue;
                 }
-                
+
+                // Fade out over 30 seconds
+                let alpha = ((1.0 - (dead.time_since_death / 30.0).min(1.0)) * 128.0) as u8;
+                let color = match team.side {
+                    Side::Allied => [50, 50, 120, alpha],
+                    Side::Enemy => [120, 50, 50, alpha],
+                    Side::Neutral => [80, 80, 80, alpha],
+                };
+
+                renderer.draw_unit(pos.x, pos.y, color, 2);
+            }
+
+            // 2. Draw smoke particles
+            let mut smoke_query = self.world.query::<(&Position, &SmokeParticle)>();
+            for (pos, smoke) in smoke_query.iter(&self.world) {
+                if !visible.contains(pos.x, pos.y) {
+                    continue;
+                }
+
+                // Fade based on lifetime
+                let fade = smoke.lifetime / smoke.max_lifetime;
+                let alpha = (fade * 180.0) as u8;
+                let gray = 100 + ((1.0 - fade) * 100.0) as u8;
+
+                renderer.draw_unit(pos.x, pos.y, [gray, gray, gray, alpha], 2);
+            }
+
+            // 3. Draw living soldiers with facing direction
+            let mut soldier_query = self.world.query::<(&Position, &Team, &Soldier)>();
+            for (pos, team, soldier) in soldier_query.iter(&self.world) {
+                if !visible.contains(pos.x, pos.y) {
+                    continue;
+                }
+
+                // Base color
                 let color = match team.side {
                     Side::Allied => colors::BLUE_ACTIVE,
                     Side::Enemy => colors::RED_ACTIVE,
                     Side::Neutral => colors::TEXT,
                 };
-                
+
                 renderer.draw_unit(pos.x, pos.y, color, 2);
+
+                // Draw facing indicator (small dot in front)
+                let front_pos_x = pos.x + soldier.facing.x * 1.5;
+                let front_pos_y = pos.y + soldier.facing.y * 1.5;
+                let lighter = [
+                    color[0].saturating_add(50),
+                    color[1].saturating_add(50),
+                    color[2].saturating_add(50),
+                    color[3],
+                ];
+                renderer.draw_unit(front_pos_x, front_pos_y, lighter, 1);
             }
-            
-            // Draw projectiles
+
+            // 4. Draw projectiles with trails
             let mut proj_query = self.world.query::<(&Position, &Projectile)>();
             for (pos, proj) in proj_query.iter(&self.world) {
                 let color = match proj.team {
-                    Side::Allied => [100, 150, 255, 255],
-                    Side::Enemy => [255, 150, 100, 255],
+                    Side::Allied => [150, 180, 255, 255],
+                    Side::Enemy => [255, 180, 150, 255],
                     Side::Neutral => [200, 200, 200, 255],
                 };
+
+                // Draw trail behind projectile
+                let trail_length = 3.0;
+                let trail_x = pos.x - proj.velocity.normalize().x * trail_length;
+                let trail_y = pos.y - proj.velocity.normalize().y * trail_length;
+                let trail_color = [color[0], color[1], color[2], 128];
+                renderer.draw_unit(trail_x, trail_y, trail_color, 1);
+
+                // Draw projectile
                 renderer.draw_unit(pos.x, pos.y, color, 1);
+            }
+
+            // 5. Draw muzzle flashes (bright, on top)
+            let mut flash_query = self.world.query::<(&Position, &MuzzleFlash, &Team)>();
+            for (pos, flash, team) in flash_query.iter(&self.world) {
+                if !visible.contains(pos.x, pos.y) {
+                    continue;
+                }
+
+                // Bright flash that fades quickly
+                let intensity = ((flash.lifetime / 0.1) * 255.0) as u8;
+                let color = match team.side {
+                    Side::Allied => [200, 220, 255, intensity],
+                    Side::Enemy => [255, 220, 200, intensity],
+                    Side::Neutral => [255, 255, 255, intensity],
+                };
+
+                renderer.draw_unit(pos.x, pos.y, color, 3);
             }
             
             renderer.end_frame().unwrap();
@@ -199,12 +295,19 @@ impl<'a> BattleApp<'a> {
             self.frame_count += 1;
             if self.fps_timer.elapsed() >= Duration::from_secs(1) {
                 let soldier_count = self.world.query::<&Soldier>().iter(&self.world).count();
+                let dead_count = self.world.query::<&DeadBody>().iter(&self.world).count();
                 let proj_count = self.world.query::<&Projectile>().iter(&self.world).count();
+                let smoke_count = self.world.query::<&SmokeParticle>().iter(&self.world).count();
+                let flash_count = self.world.query::<&MuzzleFlash>().iter(&self.world).count();
+
                 tracing::info!(
-                    "FPS: {} | Soldiers: {} | Projectiles: {}",
+                    "FPS: {} | Alive: {} Dead: {} | Projectiles: {} | Smoke: {} Flashes: {}",
                     self.frame_count,
                     soldier_count,
-                    proj_count
+                    dead_count,
+                    proj_count,
+                    smoke_count,
+                    flash_count
                 );
                 self.frame_count = 0;
                 self.fps_timer = Instant::now();
@@ -343,6 +446,15 @@ fn spawn_battalion(world: &mut World, center: Vec2, side: Side, formation: Forma
 }
 
 fn spawn_soldier(world: &mut World, battalion: Entity, pos: Vec2, rank: u32, file: u32, side: Side, front_rank: bool) {
+    // Determine facing based on side
+    // British (Enemy) at y=300 face south (down, -y)
+    // French (Allied) at y=150 face north (up, +y)
+    let facing = match side {
+        Side::Allied => vec2(0.0, 1.0),   // French face north
+        Side::Enemy => vec2(0.0, -1.0),   // British face south
+        Side::Neutral => vec2(1.0, 0.0),
+    };
+
     world.spawn((
         Soldier {
             battalion,
@@ -350,6 +462,7 @@ fn spawn_soldier(world: &mut World, battalion: Entity, pos: Vec2, rank: u32, fil
             file,
             target_pos: pos,
             in_front_rank: front_rank,
+            facing,
         },
         Position::new(pos.x, pos.y),
         Velocity::zero(),
@@ -504,7 +617,7 @@ fn soldier_shooting_system(
 
         if let Some((target, _)) = nearest_enemy {
             // FIRE!
-            if let Ok((_, _, _, mut weapon, _)) = query.get_mut(*shooter_entity) {
+            if let Ok((_, _, _, mut weapon, team)) = query.get_mut(*shooter_entity) {
                 weapon.fire();
 
                 // Spawn projectile
@@ -518,6 +631,31 @@ fn soldier_shooting_system(
                         team: *shooter_team,
                     },
                 ));
+
+                // Spawn muzzle flash (0.1 second bright flash)
+                commands.spawn((
+                    Position::new(shooter_pos.x, shooter_pos.y),
+                    MuzzleFlash { lifetime: 0.1 },
+                    Team::new(0, *shooter_team),
+                ));
+
+                // Spawn smoke particles (3-5 seconds, drift upward)
+                use rand::Rng;
+                let mut rng = rand::thread_rng();
+                for _ in 0..3 {
+                    let offset_x = rng.gen_range(-0.5..0.5);
+                    let offset_y = rng.gen_range(-0.5..0.5);
+                    let drift = vec2(rng.gen_range(-0.2..0.2), rng.gen_range(0.5..1.0));
+
+                    commands.spawn((
+                        Position::new(shooter_pos.x + offset_x, shooter_pos.y + offset_y),
+                        SmokeParticle {
+                            lifetime: rng.gen_range(3.0..5.0),
+                            max_lifetime: rng.gen_range(3.0..5.0),
+                            velocity: drift,
+                        },
+                    ));
+                }
             }
         }
     }
@@ -555,8 +693,13 @@ fn projectile_hit_detection_system(
             let dist = (dx * dx + dy * dy).sqrt();
 
             if dist < 1.0 {
-                // HIT!
-                commands.entity(soldier_entity).despawn();
+                // HIT! Convert soldier to dead body
+                commands.entity(soldier_entity)
+                    .remove::<Soldier>()          // No longer a living soldier
+                    .remove::<SoldierWeapon>()    // No longer armed
+                    .remove::<Velocity>()          // No longer moving
+                    .insert(DeadBody { time_since_death: 0.0 });  // Now a corpse
+
                 commands.entity(proj_entity).despawn();
                 hit = true;
                 break;
@@ -570,6 +713,59 @@ fn projectile_hit_detection_system(
         // Remove if out of range
         if proj.distance > proj.max_range {
             commands.entity(proj_entity).despawn();
+        }
+    }
+}
+
+/// Update muzzle flash effects (fade quickly)
+fn update_muzzle_flashes(
+    mut commands: Commands,
+    mut query: Query<(Entity, &mut MuzzleFlash)>,
+    time: Res<SimulationTime>,
+) {
+    let dt = time.delta();
+    for (entity, mut flash) in query.iter_mut() {
+        flash.lifetime -= dt;
+        if flash.lifetime <= 0.0 {
+            commands.entity(entity).despawn();
+        }
+    }
+}
+
+/// Update smoke particles (drift upward and fade)
+fn update_smoke_particles(
+    mut commands: Commands,
+    mut query: Query<(Entity, &mut Position, &mut SmokeParticle)>,
+    time: Res<SimulationTime>,
+) {
+    let dt = time.delta();
+    for (entity, mut pos, mut smoke) in query.iter_mut() {
+        smoke.lifetime -= dt;
+
+        // Drift according to velocity
+        pos.x += smoke.velocity.x * dt;
+        pos.y += smoke.velocity.y * dt;
+
+        // Despawn if lifetime expired
+        if smoke.lifetime <= 0.0 {
+            commands.entity(entity).despawn();
+        }
+    }
+}
+
+/// Update dead bodies (fade out over time)
+fn update_dead_bodies(
+    mut commands: Commands,
+    mut query: Query<(Entity, &mut DeadBody)>,
+    time: Res<SimulationTime>,
+) {
+    let dt = time.delta();
+    for (entity, mut dead) in query.iter_mut() {
+        dead.time_since_death += dt;
+
+        // Remove body after 30 seconds
+        if dead.time_since_death > 30.0 {
+            commands.entity(entity).despawn();
         }
     }
 }
