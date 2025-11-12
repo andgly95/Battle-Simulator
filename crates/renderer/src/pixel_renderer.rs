@@ -186,16 +186,29 @@ impl<'a> PixelRenderer<'a> {
     /// Draw a formation of individual soldiers
     ///
     /// Renders each soldier as a small pixel/square based on formation type
+    /// Cohesion affects visual disorder - low cohesion = scattered, ragged formation
     pub fn draw_formation(
         &mut self,
         world_x: f32,
         world_y: f32,
         formation_type: &str,
         soldier_count: u32,
+        cohesion: f32,
         color: Color,
     ) {
         // Calculate soldier size based on zoom (1-2 pixels)
         let soldier_size = (self.camera.zoom * 0.8).max(1.0).min(2.0) as u32;
+
+        // Disorder amount based on cohesion (lower cohesion = more scatter)
+        let disorder = (1.0 - cohesion) * 4.0;
+
+        // Simple pseudo-random offset generator (hash-based for consistency)
+        let hash_offset = |i: u32| -> (f32, f32) {
+            let h = i.wrapping_mul(2654435761); // Simple hash
+            let x = ((h & 0xFFFF) as f32 / 65535.0 - 0.5) * disorder;
+            let y = (((h >> 16) & 0xFFFF) as f32 / 65535.0 - 0.5) * disorder;
+            (x, y)
+        };
 
         match formation_type {
             "Line" => {
@@ -206,8 +219,9 @@ impl<'a> PixelRenderer<'a> {
                 let start_x = world_x - total_width / 2.0;
 
                 for i in 0..soldier_count {
-                    let x = start_x + i as f32 * spacing;
-                    self.draw_unit(x, world_y, color, soldier_size);
+                    let base_x = start_x + i as f32 * spacing;
+                    let (dx, dy) = hash_offset(i);
+                    self.draw_unit(base_x + dx, world_y + dy, color, soldier_size);
                 }
             }
 
@@ -220,6 +234,7 @@ impl<'a> PixelRenderer<'a> {
                 let start_x = world_x - (width as f32 * spacing) / 2.0;
                 let start_y = world_y - (ranks as f32 * spacing) / 2.0;
 
+                let mut soldier_index = 0u32;
                 for rank in 0..ranks {
                     let men_in_rank = if rank == ranks - 1 {
                         soldier_count - (rank * width)
@@ -228,9 +243,11 @@ impl<'a> PixelRenderer<'a> {
                     };
 
                     for file in 0..men_in_rank {
-                        let x = start_x + file as f32 * spacing;
-                        let y = start_y + rank as f32 * spacing;
-                        self.draw_unit(x, y, color, soldier_size);
+                        let base_x = start_x + file as f32 * spacing;
+                        let base_y = start_y + rank as f32 * spacing;
+                        let (dx, dy) = hash_offset(soldier_index);
+                        self.draw_unit(base_x + dx, base_y + dy, color, soldier_size);
+                        soldier_index += 1;
                     }
                 }
             }

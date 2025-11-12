@@ -58,6 +58,7 @@ impl<'a> BattleApp<'a> {
             melee_combat_system,
             morale_check_system,
             routing_behavior_system,
+            formation_reformation_system,  // Restore cohesion when not in combat
             statistics_system,
             status_report_system,
         ).chain());
@@ -201,12 +202,13 @@ impl<'a> BattleApp<'a> {
                     FormationType::Skirmish => "Skirmish",
                 };
 
-                // Draw individual soldiers in formation!
+                // Draw individual soldiers in formation with visual disorder based on cohesion!
                 renderer.draw_formation(
                     pos.x,
                     pos.y,
                     formation_name,
                     squad.size,
+                    squad.cohesion,  // Lower cohesion = more scattered/ragged formation
                     color,
                 );
             }

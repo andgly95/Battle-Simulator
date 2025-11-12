@@ -27,4 +27,5 @@ pub mod traits;
 pub use combat::{ranged_combat_system, melee_combat_system, weapon_reload_system};
 pub use movement::{movement_system, destination_system, fatigue_system, SimulationTime};
 pub use morale::{morale_check_system, routing_behavior_system};
+pub use formations::{formation_reformation_system};
 pub use systems::{spatial_index_update_system, statistics_system, status_report_system, BattleStatistics};
