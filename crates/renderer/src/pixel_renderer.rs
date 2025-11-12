@@ -175,12 +175,103 @@ impl<'a> PixelRenderer<'a> {
     /// Draw a unit at world coordinates
     pub fn draw_unit(&mut self, world_x: f32, world_y: f32, color: Color, size: u32) {
         let screen_pos = self.camera.world_to_screen(vec2(world_x, world_y));
-        
+
         // Center the rectangle on the position
         let x = screen_pos.x as i32 - (size as i32 / 2);
         let y = screen_pos.y as i32 - (size as i32 / 2);
-        
+
         self.draw_rect_screen(x, y, size, size, color);
+    }
+
+    /// Draw a formation of individual soldiers
+    ///
+    /// Renders each soldier as a small pixel/square based on formation type
+    pub fn draw_formation(
+        &mut self,
+        world_x: f32,
+        world_y: f32,
+        formation_type: &str,
+        soldier_count: u32,
+        color: Color,
+    ) {
+        // Calculate soldier size based on zoom (1-2 pixels)
+        let soldier_size = (self.camera.zoom * 0.8).max(1.0).min(2.0) as u32;
+
+        match formation_type {
+            "Line" => {
+                // Line formation: soldiers in horizontal line
+                // ~2 meters per soldier (close order)
+                let spacing = 2.0;
+                let total_width = soldier_count as f32 * spacing;
+                let start_x = world_x - total_width / 2.0;
+
+                for i in 0..soldier_count {
+                    let x = start_x + i as f32 * spacing;
+                    self.draw_unit(x, world_y, color, soldier_size);
+                }
+            }
+
+            "Column" => {
+                // Column: 20 men wide, multiple ranks deep
+                let width = 20;
+                let ranks = (soldier_count as f32 / width as f32).ceil() as u32;
+                let spacing = 1.5;
+
+                let start_x = world_x - (width as f32 * spacing) / 2.0;
+                let start_y = world_y - (ranks as f32 * spacing) / 2.0;
+
+                for rank in 0..ranks {
+                    let men_in_rank = if rank == ranks - 1 {
+                        soldier_count - (rank * width)
+                    } else {
+                        width.min(soldier_count - rank * width)
+                    };
+
+                    for file in 0..men_in_rank {
+                        let x = start_x + file as f32 * spacing;
+                        let y = start_y + rank as f32 * spacing;
+                        self.draw_unit(x, y, color, soldier_size);
+                    }
+                }
+            }
+
+            "Square" => {
+                // Hollow square for defense
+                let side_length = (soldier_count as f32 / 4.0).sqrt().ceil() as u32;
+                let spacing = 2.0;
+                let half_size = side_length as f32 * spacing / 2.0;
+
+                for i in 0..side_length {
+                    let offset = i as f32 * spacing - half_size;
+                    // Top, bottom, left, right sides
+                    self.draw_unit(world_x + offset, world_y - half_size, color, soldier_size);
+                    self.draw_unit(world_x + offset, world_y + half_size, color, soldier_size);
+                    self.draw_unit(world_x - half_size, world_y + offset, color, soldier_size);
+                    self.draw_unit(world_x + half_size, world_y + offset, color, soldier_size);
+                }
+            }
+
+            "Skirmish" => {
+                // Loose dispersed order
+                let spacing = 4.0;
+                let width = (soldier_count as f32).sqrt().ceil() as u32;
+                let start_x = world_x - (width as f32 * spacing) / 2.0;
+                let start_y = world_y - (width as f32 * spacing) / 2.0;
+
+                for i in 0..soldier_count {
+                    let row = i / width;
+                    let col = i % width;
+                    let x = start_x + col as f32 * spacing;
+                    let y = start_y + row as f32 * spacing;
+                    self.draw_unit(x, y, color, soldier_size);
+                }
+            }
+
+            _ => {
+                // Fallback
+                self.draw_unit(world_x, world_y, color, 8);
+            }
+        }
     }
 
     /// Complete frame and present to screen

@@ -172,11 +172,11 @@ impl<'a> BattleApp<'a> {
             // Draw grid
             renderer.draw_grid(100.0);
 
-            // Draw all units
+            // Draw all units - now with individual soldiers!
             let visible = renderer.visible_bounds();
-            let mut unit_query = self.world.query::<(&Position, &Team, &Squad, &AIState, &Morale)>();
+            let mut unit_query = self.world.query::<(&Position, &Team, &Squad, &AIState, &Morale, &Formation)>();
 
-            for (pos, team, squad, ai_state, morale) in unit_query.iter(&self.world) {
+            for (pos, team, squad, ai_state, morale, formation) in unit_query.iter(&self.world) {
                 // Cull units outside view
                 if !visible.contains(pos.x, pos.y) {
                     continue;
@@ -193,10 +193,22 @@ impl<'a> BattleApp<'a> {
                     (Side::Neutral, _, _) => colors::TEXT, // Gray for neutral
                 };
 
-                // Size based on unit strength
-                let size = (squad.size as f32 / squad.max_size as f32 * 8.0 + 2.0) as u32;
+                // Get formation type as string
+                let formation_name = match formation.formation_type {
+                    FormationType::Line => "Line",
+                    FormationType::Column => "Column",
+                    FormationType::Square => "Square",
+                    FormationType::Skirmish => "Skirmish",
+                };
 
-                renderer.draw_unit(pos.x, pos.y, color, size.max(2));
+                // Draw individual soldiers in formation!
+                renderer.draw_formation(
+                    pos.x,
+                    pos.y,
+                    formation_name,
+                    squad.size,
+                    color,
+                );
             }
 
             renderer.end_frame().unwrap();
