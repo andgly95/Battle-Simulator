@@ -206,9 +206,7 @@ impl<'a> BattleApp<'a> {
                 }
             }
             
-            renderer.begin_frame();
-
-            // Draw terrain FIRST (background layer)
+            // Draw terrain as background (this replaces begin_frame)
             let terrain = self.world.resource::<Terrain>();
             renderer.draw_terrain(&terrain);
 
