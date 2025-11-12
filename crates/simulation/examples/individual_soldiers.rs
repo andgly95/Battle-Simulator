@@ -227,7 +227,7 @@ impl<'a> BattleApp<'a> {
                     Side::Neutral => [80, 80, 80, alpha],
                 };
 
-                renderer.draw_unit(pos.x, pos.y, color, 2);
+                renderer.draw_unit(pos.x, pos.y, color, 0.8); // 0.8m (dead body)
             }
 
             // 2. Draw smoke particles
@@ -242,7 +242,7 @@ impl<'a> BattleApp<'a> {
                 let alpha = (fade * 180.0) as u8;
                 let gray = 100 + ((1.0 - fade) * 100.0) as u8;
 
-                renderer.draw_unit(pos.x, pos.y, [gray, gray, gray, alpha], 2);
+                renderer.draw_unit(pos.x, pos.y, [gray, gray, gray, alpha], 1.0); // 1.0m (smoke puff)
             }
 
             // 3. Draw living soldiers with facing direction
@@ -259,7 +259,7 @@ impl<'a> BattleApp<'a> {
                     Side::Neutral => colors::TEXT,
                 };
 
-                renderer.draw_unit(pos.x, pos.y, color, 2);
+                renderer.draw_unit(pos.x, pos.y, color, 0.8); // 0.8m (soldier)
 
                 // Draw facing indicator (small dot in front)
                 let front_pos_x = pos.x + soldier.facing.x * 1.5;
@@ -270,7 +270,7 @@ impl<'a> BattleApp<'a> {
                     color[2].saturating_add(50),
                     color[3],
                 ];
-                renderer.draw_unit(front_pos_x, front_pos_y, lighter, 1);
+                renderer.draw_unit(front_pos_x, front_pos_y, lighter, 0.3); // 0.3m (facing indicator)
             }
 
             // 4. Draw projectiles with trails
@@ -287,10 +287,10 @@ impl<'a> BattleApp<'a> {
                 let trail_x = pos.x - proj.velocity.normalize().x * trail_length;
                 let trail_y = pos.y - proj.velocity.normalize().y * trail_length;
                 let trail_color = [color[0], color[1], color[2], 128];
-                renderer.draw_unit(trail_x, trail_y, trail_color, 1);
+                renderer.draw_unit(trail_x, trail_y, trail_color, 0.15); // 0.15m (bullet trail)
 
                 // Draw projectile
-                renderer.draw_unit(pos.x, pos.y, color, 1);
+                renderer.draw_unit(pos.x, pos.y, color, 0.2); // 0.2m (bullet)
             }
 
             // 5. Draw muzzle flashes (bright, on top)
@@ -308,7 +308,7 @@ impl<'a> BattleApp<'a> {
                     Side::Neutral => [255, 255, 255, intensity],
                 };
 
-                renderer.draw_unit(pos.x, pos.y, color, 3);
+                renderer.draw_unit(pos.x, pos.y, color, 1.5); // 1.5m (muzzle flash)
             }
             
             renderer.end_frame().unwrap();

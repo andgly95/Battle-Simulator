@@ -172,15 +172,19 @@ impl<'a> PixelRenderer<'a> {
         }
     }
 
-    /// Draw a unit at world coordinates
-    pub fn draw_unit(&mut self, world_x: f32, world_y: f32, color: Color, size: u32) {
+    /// Draw a unit at world coordinates with world-space size
+    /// size_meters: size in meters (e.g., 1.0 for a 1-meter soldier)
+    pub fn draw_unit(&mut self, world_x: f32, world_y: f32, color: Color, size_meters: f32) {
         let screen_pos = self.camera.world_to_screen(vec2(world_x, world_y));
 
-        // Center the rectangle on the position
-        let x = screen_pos.x as i32 - (size as i32 / 2);
-        let y = screen_pos.y as i32 - (size as i32 / 2);
+        // Convert world size to screen size based on zoom
+        let screen_size = (size_meters * self.camera.zoom).max(1.0) as u32;
 
-        self.draw_rect_screen(x, y, size, size, color);
+        // Center the rectangle on the position
+        let x = screen_pos.x as i32 - (screen_size as i32 / 2);
+        let y = screen_pos.y as i32 - (screen_size as i32 / 2);
+
+        self.draw_rect_screen(x, y, screen_size, screen_size, color);
     }
 
     /// Draw a formation of individual soldiers
@@ -196,8 +200,8 @@ impl<'a> PixelRenderer<'a> {
         cohesion: f32,
         color: Color,
     ) {
-        // Calculate soldier size based on zoom (1-2 pixels)
-        let soldier_size = (self.camera.zoom * 0.8).max(1.0).min(2.0) as u32;
+        // Calculate soldier size based on zoom (0.8 meters in world space)
+        let soldier_size_meters = 0.8;
 
         // Disorder amount based on cohesion (lower cohesion = more scatter)
         let disorder = (1.0 - cohesion) * 4.0;
@@ -221,7 +225,7 @@ impl<'a> PixelRenderer<'a> {
                 for i in 0..soldier_count {
                     let base_x = start_x + i as f32 * spacing;
                     let (dx, dy) = hash_offset(i);
-                    self.draw_unit(base_x + dx, world_y + dy, color, soldier_size);
+                    self.draw_unit(base_x + dx, world_y + dy, color, soldier_size_meters);
                 }
             }
 
@@ -246,7 +250,7 @@ impl<'a> PixelRenderer<'a> {
                         let base_x = start_x + file as f32 * spacing;
                         let base_y = start_y + rank as f32 * spacing;
                         let (dx, dy) = hash_offset(soldier_index);
-                        self.draw_unit(base_x + dx, base_y + dy, color, soldier_size);
+                        self.draw_unit(base_x + dx, base_y + dy, color, soldier_size_meters);
                         soldier_index += 1;
                     }
                 }
@@ -261,10 +265,10 @@ impl<'a> PixelRenderer<'a> {
                 for i in 0..side_length {
                     let offset = i as f32 * spacing - half_size;
                     // Top, bottom, left, right sides
-                    self.draw_unit(world_x + offset, world_y - half_size, color, soldier_size);
-                    self.draw_unit(world_x + offset, world_y + half_size, color, soldier_size);
-                    self.draw_unit(world_x - half_size, world_y + offset, color, soldier_size);
-                    self.draw_unit(world_x + half_size, world_y + offset, color, soldier_size);
+                    self.draw_unit(world_x + offset, world_y - half_size, color, soldier_size_meters);
+                    self.draw_unit(world_x + offset, world_y + half_size, color, soldier_size_meters);
+                    self.draw_unit(world_x - half_size, world_y + offset, color, soldier_size_meters);
+                    self.draw_unit(world_x + half_size, world_y + offset, color, soldier_size_meters);
                 }
             }
 
@@ -280,13 +284,13 @@ impl<'a> PixelRenderer<'a> {
                     let col = i % width;
                     let x = start_x + col as f32 * spacing;
                     let y = start_y + row as f32 * spacing;
-                    self.draw_unit(x, y, color, soldier_size);
+                    self.draw_unit(x, y, color, soldier_size_meters);
                 }
             }
 
             _ => {
                 // Fallback
-                self.draw_unit(world_x, world_y, color, 8);
+                self.draw_unit(world_x, world_y, color, soldier_size_meters);
             }
         }
     }
