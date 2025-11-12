@@ -28,8 +28,16 @@ anyhow = "1.0"
 # Parallelism
 rayon = "1.8"
 
-# ECS options
+# ECS and Engine
 bevy_ecs = "0.14"
+bevy = { version = "0.14", default-features = false, features = [
+    "bevy_pbr",
+    "bevy_core_pipeline",
+    "bevy_winit",
+    "bevy_render",
+    "x11",  # Linux window support
+    "png",  # Texture loading
+] }
 # specs = "0.20"        # Alternative ECS
 
 # Rendering (optional)
