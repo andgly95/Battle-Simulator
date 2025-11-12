@@ -15,10 +15,11 @@ use battle_sim_simulation::components::*;
 use battle_sim_simulation::*;
 use battle_sim_renderer::{PixelRenderer, colors};
 use winit::{
-    event::{WindowEvent, ElementState, MouseButton, MouseScrollDelta},
+    event::{WindowEvent, ElementState, MouseButton, MouseScrollDelta, KeyEvent},
     event_loop::{EventLoop, ControlFlow, ActiveEventLoop},
     dpi::{PhysicalPosition, LogicalSize},
     application::ApplicationHandler,
+    keyboard::{PhysicalKey, KeyCode},
 };
 use glam::{vec2, Vec2};
 use std::time::{Instant, Duration};
@@ -115,15 +116,19 @@ impl<'a> BattleApp<'a> {
         tracing::info!("  INDIVIDUAL SOLDIER SIMULATION");
         tracing::info!("  4,800 soldiers, each with their own AI!");
         tracing::info!("==============================================");
-        
+
         // Spawn British line - 3 battalions × 800 soldiers = 2,400 individual entities
         tracing::info!("Spawning 2,400 British soldiers in LINE formation...");
-        spawn_battalion(&mut world, vec2(150.0, 400.0), Side::Enemy, FormationType::Line, 800);
-        
-        // Spawn French columns - 3 battalions × 800 soldiers = 2,400 individual entities  
+        spawn_battalion(&mut world, vec2(-200.0, 300.0), Side::Enemy, FormationType::Line, 800);
+        spawn_battalion(&mut world, vec2(200.0, 300.0), Side::Enemy, FormationType::Line, 800);
+        spawn_battalion(&mut world, vec2(600.0, 300.0), Side::Enemy, FormationType::Line, 800);
+
+        // Spawn French columns - 3 battalions × 800 soldiers = 2,400 individual entities
         tracing::info!("Spawning 2,400 French soldiers in COLUMN formation...");
-        spawn_battalion(&mut world, vec2(150.0, 200.0), Side::Allied, FormationType::Column, 800);
-        
+        spawn_battalion(&mut world, vec2(-200.0, 150.0), Side::Allied, FormationType::Column, 800);
+        spawn_battalion(&mut world, vec2(200.0, 150.0), Side::Allied, FormationType::Column, 800);
+        spawn_battalion(&mut world, vec2(600.0, 150.0), Side::Allied, FormationType::Column, 800);
+
         tracing::info!("Total: 4,800 individual soldier entities created!");
         tracing::info!("");
         
@@ -215,11 +220,16 @@ impl<'a> ApplicationHandler for BattleApp<'a> {
                 .with_title("Individual Soldier Simulation - 4,800 entities")
                 .with_inner_size(LogicalSize::new(1280, 720));
             let window = event_loop.create_window(attrs).unwrap();
-            
-            let renderer = unsafe {
+
+            let mut renderer = unsafe {
                 PixelRenderer::new(&*(&window as *const _)).unwrap()
             };
-            
+
+            // Position camera to see the battlefield
+            // Center on battlefield: x spans -200 to 600, y spans 150 to 300
+            renderer.camera_mut().position = vec2(200.0, 225.0);
+            renderer.camera_mut().zoom = 1.0;
+
             self.renderer = Some(renderer);
             self.window = Some(window);
         }
@@ -229,6 +239,50 @@ impl<'a> ApplicationHandler for BattleApp<'a> {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::RedrawRequested => self.render(),
+
+            WindowEvent::MouseInput { state, button, .. } => {
+                if button == MouseButton::Left {
+                    self.mouse_pressed = state == ElementState::Pressed;
+                }
+            }
+
+            WindowEvent::CursorMoved { position, .. } => {
+                if self.mouse_pressed {
+                    if let (Some(last_pos), Some(ref mut renderer)) = (self.last_mouse_pos, &mut self.renderer) {
+                        let dx = position.x - last_pos.x;
+                        let dy = position.y - last_pos.y;
+
+                        let camera = renderer.camera_mut();
+                        camera.position.x -= dx as f32 / camera.zoom;
+                        camera.position.y += dy as f32 / camera.zoom;
+                    }
+                }
+                self.last_mouse_pos = Some(position);
+            }
+
+            WindowEvent::MouseWheel { delta, .. } => {
+                if let Some(ref mut renderer) = self.renderer {
+                    let zoom_factor = match delta {
+                        MouseScrollDelta::LineDelta(_, y) => {
+                            if y > 0.0 { 1.1 } else { 0.9 }
+                        }
+                        MouseScrollDelta::PixelDelta(pos) => {
+                            if pos.y > 0.0 { 1.1 } else { 0.9 }
+                        }
+                    };
+
+                    let camera = renderer.camera_mut();
+                    camera.zoom = (camera.zoom * zoom_factor).clamp(0.1, 100.0);
+                }
+            }
+
+            WindowEvent::KeyboardInput { event: KeyEvent { physical_key, state: ElementState::Pressed, .. }, .. } => {
+                if let PhysicalKey::Code(KeyCode::Space) = physical_key {
+                    self.paused = !self.paused;
+                    tracing::info!("Simulation {}", if self.paused { "PAUSED" } else { "RESUMED" });
+                }
+            }
+
             _ => {}
         }
     }
