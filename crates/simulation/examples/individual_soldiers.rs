@@ -11,6 +11,7 @@
 
 use bevy_ecs::prelude::*;
 use battle_sim_core::spatial::SpatialIndex;
+use battle_sim_core::terrain::Terrain;
 use battle_sim_simulation::components::*;
 use battle_sim_simulation::*;
 use battle_sim_renderer::{PixelRenderer, colors};
@@ -119,9 +120,28 @@ struct BattleApp<'a> {
 impl<'a> BattleApp<'a> {
     fn new() -> Self {
         let mut world = World::new();
-        
+
         world.insert_resource(SpatialIndex::new(100.0));
         world.insert_resource(SimulationTime::new());
+
+        // Create terrain (1km x 1km battlefield)
+        let mut terrain = Terrain::new(1000.0, 1000.0, 10.0); // 10m cell size
+
+        // Add hills for tactical advantage
+        terrain.add_hill(100.0, 220.0, 80.0, 15.0);  // Hill near French position
+        terrain.add_hill(500.0, 320.0, 60.0, 20.0);  // Hill at British position
+        terrain.add_hill(700.0, 200.0, 50.0, 12.0);  // Small hill on flank
+
+        // Add forests for cover and line-of-sight blocks
+        terrain.add_forest(400.0, 100.0, 40.0);  // Forest south
+        terrain.add_forest(800.0, 250.0, 35.0);  // Forest east
+
+        // Add road for fast movement
+        terrain.add_road(0.0, 225.0, 1000.0, 225.0, 8.0);  // Road across center
+
+        tracing::info!("Terrain generated: hills, forests, and roads");
+
+        world.insert_resource(terrain);
         
         let mut schedule = Schedule::default();
         schedule.add_systems((
@@ -187,7 +207,10 @@ impl<'a> BattleApp<'a> {
             }
             
             renderer.begin_frame();
-            renderer.draw_grid(100.0);
+
+            // Draw terrain FIRST (background layer)
+            let terrain = self.world.resource::<Terrain>();
+            renderer.draw_terrain(&terrain);
 
             let visible = renderer.visible_bounds();
 
@@ -541,19 +564,23 @@ fn assign_formation_positions(
 
 fn soldier_movement_system(
     mut query: Query<(&Soldier, &mut Position, &mut Velocity)>,
+    terrain: Res<Terrain>,
 ) {
     for (soldier, mut pos, mut vel) in query.iter_mut() {
         // Move towards target position
         let dx = soldier.target_pos.x - pos.x;
         let dy = soldier.target_pos.y - pos.y;
         let dist = (dx * dx + dy * dy).sqrt();
-        
+
         if dist > 0.5 {
-            // Move towards position
+            // Get terrain speed modifier at current position
+            let terrain_modifier = terrain.get_movement_speed(vec2(pos.x, pos.y));
+
+            // Move towards position (base speed 1.0 m/s * terrain modifier)
             vel.dx = dx / dist;
             vel.dy = dy / dist;
-            vel.speed = 1.0;
-            
+            vel.speed = 1.0 * terrain_modifier;
+
             pos.x += vel.dx * vel.speed * 0.033;
             pos.y += vel.dy * vel.speed * 0.033;
         } else {
@@ -578,6 +605,7 @@ fn soldier_weapon_reload_system(
 fn soldier_shooting_system(
     mut commands: Commands,
     mut query: Query<(Entity, &Soldier, &Position, &mut SoldierWeapon, &Team)>,
+    terrain: Res<Terrain>,
 ) {
     // Collect all soldiers first to avoid borrow issues
     let soldiers: Vec<_> = query.iter().map(|(e, s, p, w, t)| (e, s.clone(), *p, w.loaded, t.side)).collect();
@@ -588,7 +616,7 @@ fn soldier_shooting_system(
             continue;
         }
 
-        // Find nearest enemy in range
+        // Find nearest visible enemy in range
         let mut nearest_enemy: Option<(Vec2, f32)> = None;
 
         for (target_entity, _, target_pos, _, target_team) in soldiers.iter() {
@@ -605,12 +633,18 @@ fn soldier_shooting_system(
             let dist = (dx * dx + dy * dy).sqrt();
 
             if dist <= 200.0 {
-                if let Some((_, nearest_dist)) = nearest_enemy {
-                    if dist < nearest_dist {
-                        nearest_enemy = Some((vec2(target_pos.x, target_pos.y), dist));
+                // Check line of sight through terrain!
+                let shooter_vec = vec2(shooter_pos.x, shooter_pos.y);
+                let target_vec = vec2(target_pos.x, target_pos.y);
+
+                if terrain.has_line_of_sight(shooter_vec, target_vec) {
+                    if let Some((_, nearest_dist)) = nearest_enemy {
+                        if dist < nearest_dist {
+                            nearest_enemy = Some((target_vec, dist));
+                        }
+                    } else {
+                        nearest_enemy = Some((target_vec, dist));
                     }
-                } else {
-                    nearest_enemy = Some((vec2(target_pos.x, target_pos.y), dist));
                 }
             }
         }

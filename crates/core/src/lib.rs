@@ -10,6 +10,7 @@ pub mod ecs;
 pub mod spatial;
 pub mod math;
 pub mod types;
+pub mod terrain;
 
 pub use glam::*;
 

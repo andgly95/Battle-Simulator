@@ -291,6 +291,60 @@ impl<'a> PixelRenderer<'a> {
         }
     }
 
+    /// Draw terrain grid
+    pub fn draw_terrain(&mut self, terrain: &battle_sim_core::terrain::Terrain) {
+        let (grid_width, grid_height) = terrain.grid_dimensions();
+        let cell_size = terrain.cell_size();
+        let visible = self.camera.visible_bounds();
+
+        // Iterate through visible terrain cells
+        for grid_y in 0..grid_height {
+            for grid_x in 0..grid_width {
+                let world_x = grid_x as f32 * cell_size;
+                let world_y = grid_y as f32 * cell_size;
+
+                // Cull cells outside visible area
+                if world_x + cell_size < visible.x || world_x > visible.x + visible.width
+                    || world_y + cell_size < visible.y || world_y > visible.y + visible.height
+                {
+                    continue;
+                }
+
+                // Get terrain type and elevation
+                let terrain_type = terrain.get_terrain_type(world_x, world_y);
+                let elevation = terrain.get_elevation(world_x, world_y);
+
+                // Base color from terrain type
+                let mut color = terrain_type.color();
+
+                // Shade based on elevation (darker = lower, lighter = higher)
+                let elevation_shade = (elevation / 30.0).clamp(-0.3, 0.3);
+                for i in 0..3 {
+                    if elevation_shade > 0.0 {
+                        color[i] = color[i].saturating_add((elevation_shade * 100.0) as u8);
+                    } else {
+                        color[i] = color[i].saturating_sub((-elevation_shade * 100.0) as u8);
+                    }
+                }
+
+                // Convert to screen coordinates
+                let screen_top_left = self.camera.world_to_screen(vec2(world_x, world_y));
+                let screen_bottom_right = self.camera.world_to_screen(vec2(world_x + cell_size, world_y + cell_size));
+
+                let screen_width = (screen_bottom_right.x - screen_top_left.x).max(1.0) as u32;
+                let screen_height = (screen_bottom_right.y - screen_top_left.y).max(1.0) as u32;
+
+                self.draw_rect_screen(
+                    screen_top_left.x as i32,
+                    screen_top_left.y as i32,
+                    screen_width,
+                    screen_height,
+                    color,
+                );
+            }
+        }
+    }
+
     /// Complete frame and present to screen
     pub fn end_frame(&mut self) -> Result<()> {
         self.pixels.render()?;
