@@ -262,7 +262,6 @@ fn generate_terrain_mesh(terrain: &Terrain) -> Mesh {
     let cell_size = terrain.cell_size();
 
     let mut positions = Vec::new();
-    let mut normals = Vec::new();
     let mut uvs = Vec::new();
     let mut indices = Vec::new();
 
@@ -274,28 +273,100 @@ fn generate_terrain_mesh(terrain: &Terrain) -> Mesh {
             let world_y = terrain.get_elevation(world_x, world_z);
 
             positions.push([world_x, world_y, world_z]);
-            normals.push([0.0, 1.0, 0.0]);  // Flat normals for now
             uvs.push([x as f32 / grid_width as f32, y as f32 / grid_height as f32]);
         }
     }
 
-    // Generate indices (two triangles per quad)
+    // Calculate normals from geometry
+    let mut normals = vec![[0.0f32, 0.0f32, 0.0f32]; positions.len()];
+
+    // Helper to get vertex index
+    let get_index = |x: usize, y: usize| -> usize {
+        y * (grid_width + 1) + x
+    };
+
+    // Generate indices and calculate normals
     for y in 0..grid_height {
         for x in 0..grid_width {
-            let i0 = y * (grid_width + 1) + x;
-            let i1 = i0 + 1;
-            let i2 = i0 + (grid_width + 1);
-            let i3 = i2 + 1;
+            let i0 = get_index(x, y);
+            let i1 = get_index(x + 1, y);
+            let i2 = get_index(x, y + 1);
+            let i3 = get_index(x + 1, y + 1);
 
-            // First triangle
-            indices.push(i0 as u32);
-            indices.push(i2 as u32);
-            indices.push(i1 as u32);
+            // First triangle (i0, i2, i1)
+            {
+                let p0 = Vec3::from(positions[i0]);
+                let p1 = Vec3::from(positions[i2]);
+                let p2 = Vec3::from(positions[i1]);
 
-            // Second triangle
-            indices.push(i1 as u32);
-            indices.push(i2 as u32);
-            indices.push(i3 as u32);
+                let edge1 = p1 - p0;
+                let edge2 = p2 - p0;
+                let face_normal = edge1.cross(edge2).normalize();
+
+                // Accumulate normal for each vertex
+                normals[i0] = [
+                    normals[i0][0] + face_normal.x,
+                    normals[i0][1] + face_normal.y,
+                    normals[i0][2] + face_normal.z,
+                ];
+                normals[i2] = [
+                    normals[i2][0] + face_normal.x,
+                    normals[i2][1] + face_normal.y,
+                    normals[i2][2] + face_normal.z,
+                ];
+                normals[i1] = [
+                    normals[i1][0] + face_normal.x,
+                    normals[i1][1] + face_normal.y,
+                    normals[i1][2] + face_normal.z,
+                ];
+
+                indices.push(i0 as u32);
+                indices.push(i2 as u32);
+                indices.push(i1 as u32);
+            }
+
+            // Second triangle (i1, i2, i3)
+            {
+                let p0 = Vec3::from(positions[i1]);
+                let p1 = Vec3::from(positions[i2]);
+                let p2 = Vec3::from(positions[i3]);
+
+                let edge1 = p1 - p0;
+                let edge2 = p2 - p0;
+                let face_normal = edge1.cross(edge2).normalize();
+
+                normals[i1] = [
+                    normals[i1][0] + face_normal.x,
+                    normals[i1][1] + face_normal.y,
+                    normals[i1][2] + face_normal.z,
+                ];
+                normals[i2] = [
+                    normals[i2][0] + face_normal.x,
+                    normals[i2][1] + face_normal.y,
+                    normals[i2][2] + face_normal.z,
+                ];
+                normals[i3] = [
+                    normals[i3][0] + face_normal.x,
+                    normals[i3][1] + face_normal.y,
+                    normals[i3][2] + face_normal.z,
+                ];
+
+                indices.push(i1 as u32);
+                indices.push(i2 as u32);
+                indices.push(i3 as u32);
+            }
+        }
+    }
+
+    // Normalize all vertex normals
+    for normal in &mut normals {
+        let len = (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
+        if len > 0.0 {
+            normal[0] /= len;
+            normal[1] /= len;
+            normal[2] /= len;
+        } else {
+            *normal = [0.0, 1.0, 0.0];  // Default to up if somehow zero
         }
     }
 
@@ -339,14 +410,17 @@ fn create_chess_pawn_mesh() -> Mesh {
         let x = angle.cos() * base_radius;
         let z = angle.sin() * base_radius;
 
+        // Normal points outward radially
+        let normal = Vec3::new(x, 0.0, z).normalize();
+
         // Bottom ring
         positions.push([x, 0.0, z]);
-        normals.push([x, 0.0, z].into());  // Simplified normal
+        normals.push([normal.x, normal.y, normal.z]);
         uvs.push([segment as f32 / segments as f32, 0.0]);
 
         // Top ring of base
         positions.push([x, base_height, z]);
-        normals.push([x, 0.0, z].into());
+        normals.push([normal.x, normal.y, normal.z]);
         uvs.push([segment as f32 / segments as f32, 0.2]);
     }
 
@@ -368,14 +442,17 @@ fn create_chess_pawn_mesh() -> Mesh {
         let x = angle.cos() * stem_radius;
         let z = angle.sin() * stem_radius;
 
+        // Normal points outward radially
+        let normal = Vec3::new(x, 0.0, z).normalize();
+
         // Bottom of stem
         positions.push([x, base_height, z]);
-        normals.push([x, 0.0, z].into());
+        normals.push([normal.x, normal.y, normal.z]);
         uvs.push([segment as f32 / segments as f32, 0.2]);
 
         // Top of stem
         positions.push([x, base_height + stem_height, z]);
-        normals.push([x, 0.0, z].into());
+        normals.push([normal.x, normal.y, normal.z]);
         uvs.push([segment as f32 / segments as f32, 0.7]);
     }
 
@@ -394,19 +471,28 @@ fn create_chess_pawn_mesh() -> Mesh {
 
     // Generate head (simplified sphere - actually octahedron-ish)
     let head_y = base_height + stem_height;
+    let head_center = Vec3::new(0.0, head_y + head_radius * 0.5, 0.0);
+
     for segment in 0..=segments {
         let angle = (segment as f32 / segments as f32) * std::f32::consts::TAU;
         let x = angle.cos() * head_radius;
         let z = angle.sin() * head_radius;
 
         // Equator
+        let equator_pos = Vec3::new(x, head_y, z);
+        let equator_normal = (equator_pos - head_center).normalize();
         positions.push([x, head_y, z]);
-        normals.push([x, 0.0, z].into());
+        normals.push([equator_normal.x, equator_normal.y, equator_normal.z]);
         uvs.push([segment as f32 / segments as f32, 0.75]);
 
         // Upper hemisphere
-        positions.push([x * 0.7, head_y + head_radius * 0.7, z * 0.7]);
-        normals.push([x, head_radius, z].into());
+        let upper_x = x * 0.7;
+        let upper_z = z * 0.7;
+        let upper_y = head_y + head_radius * 0.7;
+        let upper_pos = Vec3::new(upper_x, upper_y, upper_z);
+        let upper_normal = (upper_pos - head_center).normalize();
+        positions.push([upper_x, upper_y, upper_z]);
+        normals.push([upper_normal.x, upper_normal.y, upper_normal.z]);
         uvs.push([segment as f32 / segments as f32, 0.9]);
     }
 
